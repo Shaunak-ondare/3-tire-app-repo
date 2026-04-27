@@ -32,13 +32,36 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         # Note: You need a sonar-project.properties file in the root directory
 
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          
+      - name: Install backend dependencies
+        run: pip install -r backend/requirements.txt
+        
       - name: Snyk Vulnerability Scan (SCA)
-        uses: snyk/actions/python-3.10@master
-        continue-on-error: true
+        uses: snyk/actions/setup@master
+        
+      - name: Run Snyk Test
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        with:
-          args: --all-projects
+        run: |
+          # Run Snyk and capture the exit code
+          snyk test --all-projects || EXIT_CODE=$?
+          
+          # Snyk Exit Codes:
+          # 0 = No vulns found
+          # 1 = Vulns found
+          # 2 = Execution error (e.g. couldn't scan)
+          
+          if [ "$EXIT_CODE" = "2" ]; then
+            echo "Snyk failed to execute properly. Breaking the pipeline!"
+            exit 1
+          fi
+          
+          echo "Snyk scan completed successfully. Bypassing vulnerability failure."
+          exit 0
 
   build_and_scan_containers:
     name: Build & Container Scan
@@ -56,7 +79,6 @@ jobs:
 
       - name: Trivy Vulnerability Scanner (Backend)
         uses: aquasecurity/trivy-action@master
-        continue-on-error: true
         with:
           image-ref: 'todo-backend:${{ github.sha }}'
           format: 'table'
@@ -67,7 +89,6 @@ jobs:
 
       - name: Trivy Vulnerability Scanner (Frontend)
         uses: aquasecurity/trivy-action@master
-        continue-on-error: true
         with:
           image-ref: 'todo-frontend:${{ github.sha }}'
           format: 'table'
@@ -87,7 +108,6 @@ jobs:
 
       - name: StackHawk DAST Scan
         uses: stackhawk/hawkscan-action@v2.1.3
-        continue-on-error: true
         with:
           apiKey: ${{ secrets.HAWK_API_KEY }}
           # Note: Requires a stackhawk.yml config file in the root
