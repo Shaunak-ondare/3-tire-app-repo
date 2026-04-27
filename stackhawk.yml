@@ -1,0 +1,20 @@
+app:
+  # Replace this with the App ID from your StackHawk dashboard
+  applicationId: shaunak-app
+  
+  # Environment name (e.g. Development, CI, Production)
+  env: Development
+  
+  # The URL where your application is running. 
+  # Since StackHawk will be on the same Docker network, we use the container name "backend"
+  host: http://backend:5000
+  
+  # (Optional but recommended) If your Flask app has an OpenAPI/Swagger spec, point to it here
+  # openApiConf:
+  #   filePath: backend/openapi.json
+
+hawk:
+  # HawkScan configuration
+  spider:
+    baseSpider:
+      enabled: true
