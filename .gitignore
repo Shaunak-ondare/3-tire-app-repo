@@ -1,0 +1,97 @@
+# ========================
+# Python / Flask (Backend)
+# ========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.Python
+
+# Virtual environments
+venv/
+env/
+.env/
+.venv/
+ENV/
+
+# Environment variables — NEVER commit secrets!
+.env
+.env.local
+.env.*.local
+
+# Flask / SQLAlchemy
+instance/
+*.db
+*.sqlite3
+
+# Alembic migrations (keep the folder, ignore compiled)
+migrations/__pycache__/
+
+# ========================
+# Node / React (Frontend)
+# ========================
+node_modules/
+frontend/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Vite build output
+frontend/dist/
+frontend/.vite/
+dist/
+.vite/
+
+# ========================
+# Docker
+# ========================
+# Keep docker-compose.yml but ignore overrides
+docker-compose.override.yml
+
+# ========================
+# Database
+# ========================
+*.sql.bak
+pgdata/
+postgres_data/
+
+# ========================
+# OS & Editor
+# ========================
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# VS Code
+.vscode/
+!.vscode/extensions.json
+
+# JetBrains IDEs
+.idea/
+*.iml
+
+# ========================
+# Logs & Temp
+# ========================
+*.log
+logs/
+tmp/
+temp/
+*.tmp
+*.bak
+*.swp
+*.swo

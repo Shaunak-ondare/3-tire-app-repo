@@ -1,0 +1,51 @@
+services:
+
+  # ── Tier 3: Database ──────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: todo_postgres
+    restart: always
+    environment:
+      POSTGRES_DB: todo_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d todo_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Tier 2: Backend ───────────────────────────────
+  backend:
+    build: ./backend
+    container_name: todo_backend
+    restart: always
+    ports:
+      - "5000:5000"
+    environment:
+      FLASK_ENV: development
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/todo_db
+      SECRET_KEY: super-secret-todo-key-change-in-production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+
+  # ── Tier 1: Frontend (nginx serves React + proxies /api to Flask) ──
+  frontend:
+    build: ./frontend
+    container_name: todo_frontend
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:

@@ -1,0 +1,139 @@
+name: DevSecOps Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+env:
+  DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+  DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+  MANIFEST_REPO: 'your-username/manifest-repo'
+  GIT_EMAIL: 'github-actions@github.com'
+  GIT_NAME: 'GitHub Actions'
+
+jobs:
+  sast_sca:
+    name: SAST & SCA Scanning
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: SonarCloud Scan (SAST)
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        # Note: You need a sonar-project.properties file in the root directory
+
+      - name: Snyk Vulnerability Scan (SCA)
+        uses: snyk/actions/python-3.10@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --all-projects
+
+  build_and_scan_containers:
+    name: Build & Container Scan
+    runs-on: ubuntu-latest
+    needs: sast_sca
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Build Backend Image
+        run: docker build -t todo-backend:${{ github.sha }} ./backend
+
+      - name: Build Frontend Image
+        run: docker build -t todo-frontend:${{ github.sha }} ./frontend
+
+      - name: Trivy Vulnerability Scanner (Backend)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'todo-backend:${{ github.sha }}'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: 'true'
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Trivy Vulnerability Scanner (Frontend)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'todo-frontend:${{ github.sha }}'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: 'true'
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+      # DAST phase (requires the app to be running)
+      - name: Run App Locally for DAST
+        run: |
+          docker network create app-network
+          docker run -d --name db --network app-network -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=todo_db postgres:15-alpine
+          docker run -d --name backend --network app-network -p 5000:5000 -e DATABASE_URL=postgresql://postgres:postgres@db:5432/todo_db -e FLASK_ENV=development todo-backend:${{ github.sha }}
+          # Wait for backend to be ready
+          sleep 15
+
+      - name: StackHawk DAST Scan
+        uses: stackhawk/hawkscan-action@v2.1.3
+        with:
+          apiKey: ${{ secrets.HAWK_API_KEY }}
+          # Note: Requires a stackhawk.yml config file in the root
+          
+      - name: Log in to Docker Hub
+        if: github.ref == 'refs/heads/main'
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Push to Docker Hub
+        if: github.ref == 'refs/heads/main'
+        run: |
+          docker tag todo-backend:${{ github.sha }} ${{ secrets.DOCKER_USERNAME }}/todo-backend:${{ github.sha }}
+          docker tag todo-backend:${{ github.sha }} ${{ secrets.DOCKER_USERNAME }}/todo-backend:latest
+          docker push ${{ secrets.DOCKER_USERNAME }}/todo-backend:${{ github.sha }}
+          docker push ${{ secrets.DOCKER_USERNAME }}/todo-backend:latest
+
+          docker tag todo-frontend:${{ github.sha }} ${{ secrets.DOCKER_USERNAME }}/todo-frontend:${{ github.sha }}
+          docker tag todo-frontend:${{ github.sha }} ${{ secrets.DOCKER_USERNAME }}/todo-frontend:latest
+          docker push ${{ secrets.DOCKER_USERNAME }}/todo-frontend:${{ github.sha }}
+          docker push ${{ secrets.DOCKER_USERNAME }}/todo-frontend:latest
+
+  update_manifests:
+    name: GitOps - Update Manifests
+    runs-on: ubuntu-latest
+    needs: build_and_scan_containers
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout Manifest Repo
+        uses: actions/checkout@v3
+        with:
+          repository: ${{ env.MANIFEST_REPO }}
+          token: ${{ secrets.PAT_TOKEN }} # Personal Access Token needed to push to another repo
+          path: manifests
+
+      - name: Update Image Tags
+        run: |
+          cd manifests/base
+          # Using sed to update the image tag. Assuming the image line is like:
+          # image: your-dockerhub-user/todo-backend:latest
+          sed -i "s|image: .*/todo-backend:.*|image: ${{ secrets.DOCKER_USERNAME }}/todo-backend:${{ github.sha }}|g" backend.yaml
+          sed -i "s|image: .*/todo-frontend:.*|image: ${{ secrets.DOCKER_USERNAME }}/todo-frontend:${{ github.sha }}|g" frontend.yaml
+
+      - name: Commit and Push Changes
+        run: |
+          cd manifests
+          git config user.name "$GIT_NAME"
+          git config user.email "$GIT_EMAIL"
+          git add base/backend.yaml base/frontend.yaml
+          git commit -m "GitOps: Update image tags to ${{ github.sha }}"
+          git push origin main
