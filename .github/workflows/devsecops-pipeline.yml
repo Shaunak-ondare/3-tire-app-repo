@@ -29,20 +29,22 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: SonarCloud Scan (SAST)
-        uses: SonarSource/sonarcloud-github-action@master
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        # Note: You need a sonar-project.properties file in the root directory
-
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
           
       - name: Install backend dependencies
-        run: pip install -r backend/requirements.txt
+        run: pip install -r backend/requirements.txt coverage
+
+      - name: Run backend tests with coverage
+        run: python -m coverage run --source=backend/app -m unittest discover -s backend/tests && python -m coverage xml -o backend/coverage.xml
+
+      - name: SonarCloud Scan (SAST)
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         
       - name: Snyk Vulnerability Scan (SCA)
         uses: snyk/actions/setup@master
@@ -108,6 +110,9 @@ jobs:
           java-version: '17'
 
       - name: Run App Locally for DAST
+        env:
+          POSTGRES_PASSWORD: ${{ github.sha }}
+          SECRET_KEY: ${{ github.run_id }}-${{ github.sha }}
         run: |
           docker compose up -d --build postgres backend
 
