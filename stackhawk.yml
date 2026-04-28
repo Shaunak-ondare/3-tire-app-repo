@@ -1,20 +1,29 @@
 app:
-  # Replace this with the App ID from your StackHawk dashboard
-  applicationId: shaunak-app
-  
-  # Environment name (e.g. Development, CI, Production)
-  env: Development
-  
-  # The URL where your application is running. 
-  # Since StackHawk will be on the same Docker network, we use the container name "backend"
-  host: http://backend:5000
-  
-  # (Optional but recommended) If your Flask app has an OpenAPI/Swagger spec, point to it here
-  # openApiConf:
-  #   filePath: backend/openapi.json
+  # Supply the real StackHawk application ID at runtime via CI secret.
+  applicationId: ${STACKHAWK_APP_ID}
+
+  # Allow CI/local overrides while keeping sensible defaults.
+  env: ${APP_ENV:Development}
+  host: ${APP_HOST:http://localhost:5000}
+
+  # The backend root is a 404 and this app is a REST API, so we point
+  # HawkScan at known API routes and wait for the health endpoint.
+  waitForAppTarget:
+    path: /api/health
+    waitTimeoutMillis: 120000
+    pollDelay: 5000
+
+  includePaths:
+    - /api/health
+    - /api/todos.*
+    - /api/stats
 
 hawk:
-  # HawkScan configuration
+  failureThreshold: high
   spider:
     baseSpider:
       enabled: true
+    seedPaths:
+      - /api/health
+      - /api/todos
+      - /api/stats

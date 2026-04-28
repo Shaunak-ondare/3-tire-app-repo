@@ -8,6 +8,10 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+  security-events: write
+
 env:
   DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
   DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
@@ -97,22 +101,51 @@ jobs:
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
 
-      # DAST phase (requires the app to be running)
+      - name: Set up Java for HawkScan
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
       - name: Run App Locally for DAST
         run: |
-          docker network create app-network
-          docker run -d --name db --network app-network -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=todo_db postgres:15-alpine
-          docker run -d --name backend --network app-network -p 5000:5000 -e DATABASE_URL=postgresql://postgres:postgres@db:5432/todo_db -e FLASK_ENV=development todo-backend:${{ github.sha }}
-          # Wait for backend to be ready
-          sleep 15
+          docker compose up -d --build postgres backend
+
+      - name: Verify Backend Health
+        run: |
+          for i in {1..24}; do
+            if curl --fail --silent http://localhost:5000/api/health > /dev/null; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Backend did not become healthy in time."
+          docker compose logs backend postgres
+          exit 1
+
+      - name: Debug StackHawk Config
+        run: |
+          pwd
+          git rev-parse HEAD
+          sed -n '1,80p' stackhawk.yml
 
       - name: StackHawk DAST Scan
-        uses: stackhawk/hawkscan-action@v2.1.3
+        uses: stackhawk/hawkscan-action@v2.2.0
+        continue-on-error: true
+        env:
+          STACKHAWK_APP_ID: ${{ secrets.STACKHAWK_APP_ID }}
+          APP_HOST: http://localhost:5000
+          APP_ENV: Development
         with:
           apiKey: ${{ secrets.HAWK_API_KEY }}
-          dockerNetwork: app-network
-          # Note: Requires a stackhawk.yml config file in the root
-          
+          configurationFiles: stackhawk.yml
+          codeScanningAlerts: true
+          githubToken: ${{ github.token }}
+
+      - name: Stop DAST Services
+        if: always()
+        run: docker compose down -v
+
       - name: Log in to Docker Hub
         if: github.ref == 'refs/heads/main'
         uses: docker/login-action@v2
