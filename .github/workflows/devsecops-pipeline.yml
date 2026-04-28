@@ -110,9 +110,6 @@ jobs:
           java-version: '17'
 
       - name: Run App Locally for DAST
-        env:
-          POSTGRES_PASSWORD: ${{ github.sha }}
-          SECRET_KEY: ${{ github.run_id }}-${{ github.sha }}
         run: |
           docker compose up -d --build postgres backend
 

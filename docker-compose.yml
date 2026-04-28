@@ -6,16 +6,16 @@ services:
     container_name: todo_postgres
     restart: always
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-todo_db}
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: todo_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-todo_db}"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d todo_db"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -29,8 +29,8 @@ services:
       - "5000:5000"
     environment:
       FLASK_ENV: development
-      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-todo_db}
-      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required}
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/todo_db
+      SECRET_KEY: super-secret-todo-key-change-in-production
     depends_on:
       postgres:
         condition: service_healthy
